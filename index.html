@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI는 시키는 만큼 일한다</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&display=swap">
@@ -50,6 +55,25 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidd
 
 /* controls */
 #ntext{white-space:pre-line}
+#side{display:none}
+body.presenter #app{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);grid-template-rows:auto minmax(0,1fr) auto;gap:14px}
+body.presenter #viewport{grid-column:1;grid-row:1;aspect-ratio:16/9;flex:none}
+body.presenter #side{display:flex;flex-direction:column;gap:8px;grid-column:2;grid-row:1}
+body.presenter #side .lab{font-size:14px;font-weight:700;color:var(--ink-3)}
+body.presenter #side .pv{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--paper)}
+body.presenter #side iframe{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none}
+body.presenter #side .pvname{font-size:16px;color:var(--ink-2)}
+body.presenter #notes{grid-column:1 / span 2;grid-row:2;max-height:none;font-size:22px;line-height:1.75}
+body.presenter #notes .nh{font-size:15px}
+body.presenter #notes .nh b{font-size:26px}
+body.presenter #bar{grid-column:1 / span 2;grid-row:3}
+body.presenter #pbtn,body.presenter #nbtn{display:none}
+body.preview #app{padding:0}
+body.preview #bar,body.preview #notes{display:none}
+body.preview #stage{border-radius:0;box-shadow:none}
+body.preview #progress{display:none}
+:root:fullscreen #bar{opacity:0;transition:opacity .2s}
+:root:fullscreen #bar:hover{opacity:1}
 #notes{flex:none;max-height:30vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 20px;font-size:15px;line-height:1.7;color:var(--ink)}
 #notes .nh{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:13px;color:var(--ink-3);margin-bottom:6px}
 #notes .nh b{font:600 18px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
@@ -994,6 +1018,7 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
 </div>
 </div>
 
+<div id="side"><span class="lab">다음 화면</span><div class="pv"><iframe id="pvframe" title="다음 화면 미리보기" tabindex="-1"></iframe></div><span class="pvname" id="pvname"></span></div>
 <div id="notes" hidden>
   <div class="nh"><b id="ntime">00:00</b><span>/ 목표 30:00</span><button id="timer" type="button" style="all:unset;cursor:pointer;color:var(--blue);font-weight:600">타이머 초기화</button><span id="nnext"></span></div>
   <div id="ntext"></div>
@@ -1003,6 +1028,7 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
   <span id="count">01 / 22</span>
   <button id="next" type="button" aria-label="다음 슬라이드">다음 →</button>
   <span class="sep"></span>
+  <button id="pbtn" type="button">발표자 화면 (P)</button>
   <button id="nbtn" type="button" aria-pressed="false">발표자 노트 (N)</button>
   <button id="fbtn" type="button">전체화면 (F)</button>
   <span class="sep"></span>
@@ -1017,6 +1043,11 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
   const count=document.getElementById('count'), prog=document.getElementById('progress');
   const notes=document.getElementById('notes'), ntext=document.getElementById('ntext'), nnext=document.getElementById('nnext'), ntime=document.getElementById('ntime');
   let i=0, step=0, t0=Date.now();
+  const view=new URLSearchParams(location.search).get('view');
+  let peer=null, applying=false, synced=view!=='presenter';
+  if(view==='presenter'){document.body.classList.add('presenter');peer=window.opener||null;}
+  if(view==='preview'){document.body.classList.add('preview');}
+  const pvframe=document.getElementById('pvframe'), pvname=document.getElementById('pvname');
   const pad=n=>String(n).padStart(2,'0');
 
   slides.forEach((s,k)=>{
@@ -1041,12 +1072,36 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
     let nx=i<N-1?('다음 슬라이드: '+slides[i+1].dataset.name):'마지막 슬라이드';
     if(s.maxStep>step) nx='남은 단계 '+(s.maxStep-step)+' · '+nx;
     nnext.textContent=nx;
-    try{history.replaceState(null,'','#'+(i+1));}catch(e){}
+    if(view!=='preview'){try{history.replaceState(null,'','#'+(i+1));}catch(e){}}
+    if(peer&&!peer.closed&&!applying&&synced){try{peer.postMessage({t:'go',i:i,step:step},'*');}catch(e){}}
+    if(view==='presenter'){
+      let ni=i, ns=step+1; if(step>=s.maxStep){ni=i+1;ns=0;}
+      if(ni>N-1){pvname.textContent='마지막 화면입니다';}
+      else{pvname.textContent=(ni===i?'같은 슬라이드 다음 단계 · ':'')+slides[ni].dataset.name;
+        try{pvframe.contentWindow.postMessage({t:'go',i:ni,step:ns},'*');}catch(e){}}
+    }
   }
   function go(k,st){i=Math.max(0,Math.min(N-1,k));step=st===undefined?0:st;render();}
   function next(){const s=slides[i]; if(step<s.maxStep){step++;render();} else if(i<N-1) go(i+1,0);}
   function prev(){ if(step>0){step--;render();} else if(i>0) go(i-1,slides[i-1].maxStep);}
 
+  addEventListener('message',e=>{
+    const d=e.data; if(!d||typeof d!=='object')return;
+    if(d.t==='hello'){peer=e.source;notes.hidden=true;fit();try{peer.postMessage({t:'go',i:i,step:step},'*');}catch(x){}}
+    else if(d.t==='go'){synced=true;applying=true;go(d.i,d.step);applying=false;}
+  });
+  function openPresenter(){
+    if(view)return;
+    const w=window.open(location.pathname+'?view=presenter#'+(i+1),'dsPresenter','popup,width=1400,height=900');
+    if(w){peer=w;notes.hidden=true;fit();}
+  }
+  document.getElementById('pbtn').onclick=openPresenter;
+  if(view==='presenter'){
+    notes.hidden=false;
+    pvframe.src=location.pathname+'?view=preview';
+    pvframe.addEventListener('load',()=>render());
+    if(peer){try{peer.postMessage({t:'hello'},'*');}catch(e){}}
+  }
   document.getElementById('next').onclick=next;
   document.getElementById('prev').onclick=prev;
   const nbtn=document.getElementById('nbtn');
@@ -1066,15 +1121,17 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
   items.forEach(x=>x.setAttribute('aria-pressed','false'));
 
   addEventListener('keydown',e=>{
+    if(view==='preview')return;
     const k=e.key;
     if(e.target.closest&&e.target.closest('button')&&(k===' '||k==='Enter'))return;
     if(k==='ArrowRight'||k==='PageDown'||k===' '){e.preventDefault();next();}
     else if(k==='ArrowLeft'||k==='PageUp'){e.preventDefault();prev();}
     else if(k==='Home'){go(0);} else if(k==='End'){go(N-1,slides[N-1].maxStep);}
-    else if(k==='n'||k==='N'){toggleNotes();}
+    else if(k==='n'||k==='N'){if(view!=='presenter')toggleNotes();}
+    else if(k==='p'||k==='P'){openPresenter();}
     else if(k==='f'||k==='F'){fullscreen();}
   });
-  stage.addEventListener('click',e=>{if(e.target.closest('.chk-item'))return;const r=stage.getBoundingClientRect(); if(e.clientX>r.left+r.width*0.3) next(); else prev();});
+  stage.addEventListener('click',e=>{if(view==='preview')return;if(e.target.closest('.chk-item'))return;const r=stage.getBoundingClientRect(); if(e.clientX>r.left+r.width*0.3) next(); else prev();});
   let sx=null; stage.addEventListener('touchstart',e=>{sx=e.touches[0].clientX},{passive:true});
   stage.addEventListener('touchend',e=>{if(sx===null)return;const dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>40){dx<0?next():prev();} sx=null;});
 
@@ -1083,3 +1140,5 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
   go(Number.isFinite(h)?h-1:0);
 })();
 </script>
+
+</html>
