@@ -1136,6 +1136,18 @@ Stack Overflow 조사에서도 개발자들이 가장 믿는 맥락이 프로젝
   stage.addEventListener('touchend',e=>{if(sx===null)return;const dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>40){dx<0?next():prev();} sx=null;});
 
   window.__deck={go:go,slides:slides};
+  // notes.md가 같은 폴더에 있으면 발표자 노트를 그 내용으로 바꾼다 (GitHub Pages용)
+  if(location.protocol.startsWith('http')){
+    fetch('notes.md',{cache:'no-cache'}).then(r=>r.ok?r.text():null).then(t=>{
+      if(!t)return;
+      const parts=t.replace(/\r\n/g,'\n').split(/^##[ \t]*(\d+)[^\n]*\n/m);
+      for(let k=1;k<parts.length;k+=2){
+        const a=slides[+parts[k]-1]&&slides[+parts[k]-1].querySelector('.notes');
+        if(a)a.textContent=parts[k+1].trim();
+      }
+      render();
+    }).catch(()=>{});
+  }
   const h=parseInt((location.hash||'').slice(1),10);
   go(Number.isFinite(h)?h-1:0);
 })();
